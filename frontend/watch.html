@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch — Live Stream</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- hls.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@0.14.17/dist/hls.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="brand">
+        <span class="dot live"></span>
+        <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
+      </div>
+      <a href="/" class="btn btn-outline btn-sm">← Back</a>
+    </nav>
+
+    <!-- Title -->
+    <div class="mb-16" style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 id="stream-title">🎬 Loading…</h2>
+      <span id="stream-status-badge" class="status-badge status-waiting">
+        <span class="status-dot waiting"></span> Waiting
+      </span>
+    </div>
+
+    <!-- Player + Danmaku -->
+    <div class="player-wrapper" id="player-wrapper">
+      <video id="video" autoplay playsinline muted></video>
+
+      <!-- Danmaku canvas overlay -->
+      <div class="danmaku-overlay" id="danmaku-overlay"></div>
+
+      <!-- Overlay messages -->
+      <div class="overlay-msg" id="overlay-waiting">
+        <div class="icon">⏳</div>
+        <div class="text">Waiting for stream…</div>
+        <div class="sub">The streamer hasn't started pushing yet.</div>
+      </div>
+      <div class="overlay-msg hidden" id="overlay-ended">
+        <div class="icon">🔴</div>
+        <div class="text">Stream Ended</div>
+      </div>
+      <div class="overlay-msg hidden" id="overlay-error">
+        <div class="icon">⚠️</div>
+        <div class="text" id="error-text">Could not load stream.</div>
+      </div>
+    </div>
+
+    <!-- Danmaku input bar -->
+    <div class="danmaku-bar">
+      <input type="text" id="danmaku-input" placeholder="Type a danmaku…" maxlength="200">
+      <button class="btn btn-primary btn-sm" id="danmaku-send">Send</button>
+    </div>
+
+    <!-- Connection status -->
+    <p id="ws-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">
+      ● Connecting…
+    </p>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/danmaku.js"></script>
+  <script>
+    /* ── Initialisation ────────────────────────────────────────────────── */
+
+    const streamName = window.location.pathname.replace('/watch/', '');
+    // Read the viewing password from sessionStorage (set by index.html)
+    const viewPassword = sessionStorage.getItem('view_pwd_' + streamName);
+
+    const titleEl = document.getElementById('stream-title');
+    const statusBadge = document.getElementById('stream-status-badge');
+    const video = document.getElementById('video');
+    const overlayWaiting = document.getElementById('overlay-waiting');
+    const overlayEnded = document.getElementById('overlay-ended');
+    const overlayError = document.getElementById('overlay-error');
+    const errorText = document.getElementById('error-text');
+    const danmakuInput = document.getElementById('danmaku-input');
+    const danmakuSend = document.getElementById('danmaku-send');
+    const wsStatus = document.getElementById('ws-status');
+
+    titleEl.textContent = `🎬 ${streamName}`;
+
+    /* ── Validate viewing password first ───────────────────────────────── */
+
+    if (!viewPassword) {
+      // No password in URL — redirect home
+      window.location.href = '/';
+    }
+
+    let streamStatus = 'waiting';
+    let hls = null;
+    let danmaku = null;
+    let ws = null;
+    let pollTimer = null;
+    let isLive = false;
+
+    (async () => {
+      try {
+        const data = await apiPost('/api/streams/validate_view', {
+          stream_name: streamName,
+          password: viewPassword,
+        });
+        streamStatus = data.status;
+        updateStatusUI(streamStatus);
+
+        if (streamStatus === 'ended') {
+          showOverlay('ended');
+          return;
+        }
+
+        // Start danmaku
+        initDanmaku();
+        connectWebSocket();
+
+        // Start polling / attempting HLS playback
+        if (streamStatus === 'live') {
+          startHls();
+        } else {
+          pollForStream();
+        }
+      } catch (err) {
+        showOverlay('error');
+        errorText.textContent = 'Access denied: ' + err.message;
+      }
+    })();
+
+    /* ── Status UI ─────────────────────────────────────────────────────── */
+
+    function updateStatusUI(status) {
+      const dot = statusBadge.querySelector('.status-dot');
+      const label = statusBadge.querySelector('span:last-child');
+      statusBadge.className = 'status-badge';
+
+      if (status === 'live') {
+        statusBadge.classList.add('status-live');
+        dot.className = 'status-dot live';
+        label.textContent = 'LIVE';
+        overlayWaiting.classList.add('hidden');
+        overlayEnded.classList.add('hidden');
+        overlayError.classList.add('hidden');
+      } else if (status === 'waiting') {
+        statusBadge.classList.add('status-waiting');
+        dot.className = 'status-dot waiting';
+        label.textContent = 'Waiting';
+      } else {
+        statusBadge.classList.add('status-ended');
+        dot.className = 'status-dot ended';
+        label.textContent = 'Ended';
+      }
+    }
+
+    function showOverlay(type) {
+      overlayWaiting.classList.add('hidden');
+      overlayEnded.classList.add('hidden');
+      overlayError.classList.add('hidden');
+      if (type === 'waiting') overlayWaiting.classList.remove('hidden');
+      if (type === 'ended') overlayEnded.classList.remove('hidden');
+      if (type === 'error') overlayError.classList.remove('hidden');
+    }
+
+    /* ── HLS playback via hls.js ───────────────────────────────────────── */
+
+    function startHls() {
+      if (hls) return;
+      isLive = true;
+      showOverlay('waiting'); // shown until first segment loads
+
+      const hlsUrl = `/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
+
+      if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.muted = false;
+          video.play().catch(() => {});
+          showOverlay(null); // hide all overlays
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            // Stream might have ended - check status
+            checkStreamEnded();
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS (Safari)
+        video.src = hlsUrl;
+        video.addEventListener('loadedmetadata', () => {
+          video.muted = false;
+          video.play().catch(() => {});
+          showOverlay(null);
+        });
+      } else {
+        showOverlay('error');
+        errorText.textContent = 'HLS is not supported in this browser.';
+      }
+    }
+
+    /* ── Poll for stream to go live ────────────────────────────────────── */
+
+    function pollForStream() {
+      pollTimer = setInterval(async () => {
+        try {
+          const data = await apiPost('/api/streams/validate_view', {
+            stream_name: streamName,
+            password: viewPassword,
+          });
+          updateStatusUI(data.status);
+          if (data.status === 'live') {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            // Give FFmpeg a moment to generate first HLS segments
+            setTimeout(() => startHls(), 3000);
+          } else if (data.status === 'ended') {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            showOverlay('ended');
+          }
+        } catch (_) {
+          // ignore, keep polling
+        }
+      }, 3000);
+    }
+
+    async function checkStreamEnded() {
+      try {
+        const data = await apiPost('/api/streams/validate_view', {
+          stream_name: streamName,
+          password: viewPassword,
+        });
+        if (data.status === 'ended' || data.status === 'waiting') {
+          showOverlay('ended');
+          updateStatusUI('ended');
+        }
+      } catch (_) {}
+    }
+
+    /* ── Danmaku ───────────────────────────────────────────────────────── */
+
+    function initDanmaku() {
+      const overlay = document.getElementById('danmaku-overlay');
+      danmaku = new Danmaku(overlay);
+      danmaku.start();
+    }
+
+    function connectWebSocket() {
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${proto}://${window.location.host}/ws/${encodeURIComponent(streamName)}`;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        wsStatus.textContent = '● Connected — danmaku enabled';
+        wsStatus.style.color = 'var(--success)';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'danmaku' && danmaku) {
+            // Add slight rainbow variation for visual flair
+            const colors = ['#FFFFFF', '#FFD700', '#00E5FF', '#FF4081', '#B388FF', '#69F0AE'];
+            const color = msg.color || colors[Math.floor(Math.random() * colors.length)];
+            danmaku.send(msg.text, color);
+          }
+        } catch (_) {}
+      };
+
+      ws.onclose = () => {
+        wsStatus.textContent = '● Disconnected — danmaku unavailable';
+        wsStatus.style.color = 'var(--danger)';
+        // Auto-reconnect after 3s
+        setTimeout(() => {
+          if (document.hidden) return;
+          connectWebSocket();
+        }, 3000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    /* ── Send danmaku ──────────────────────────────────────────────────── */
+
+    function sendDanmaku() {
+      const text = danmakuInput.value.trim();
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+      ws.send(JSON.stringify({ type: 'danmaku', text }));
+      danmaku.send(text, '#FFFFFF'); // echo locally
+      danmakuInput.value = '';
+    }
+
+    danmakuSend.addEventListener('click', sendDanmaku);
+    danmakuInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendDanmaku();
+    });
+
+    /* ── Cleanup ───────────────────────────────────────────────────────── */
+
+    window.addEventListener('beforeunload', () => {
+      if (pollTimer) clearInterval(pollTimer);
+      if (hls) hls.destroy();
+      if (ws) ws.close();
+      if (danmaku) danmaku.destroy();
+    });
+  </script>
+</body>
+</html>

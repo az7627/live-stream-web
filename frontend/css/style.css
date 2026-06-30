@@ -1,0 +1,516 @@
+/* ── Dark-blue theme for Live Stream Web ─────────────────────────────── */
+
+:root {
+  --bg-primary: #0a1628;
+  --bg-secondary: #0f2240;
+  --bg-card: #15294a;
+  --bg-hover: #1a3460;
+  --bg-input: #0d1f3c;
+
+  --accent: #2196f3;
+  --accent-hover: #42a5f5;
+  --accent-dim: #1565c0;
+
+  --text-primary: #e3f2fd;
+  --text-secondary: #90caf9;
+  --text-muted: #546e7a;
+
+  --border: #1a3760;
+  --border-focus: #42a5f5;
+
+  --danger: #ef5350;
+  --success: #66bb6a;
+  --warning: #ffa726;
+
+  --radius: 8px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+
+  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system,
+    sans-serif;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ── Header / Navbar ──────────────────────────────────────────────────── */
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+.navbar .brand {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navbar .brand .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-right: 4px;
+}
+.navbar .brand .dot.live {
+  background: var(--danger);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #ef5350;
+  filter: brightness(1.1);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.btn-outline:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+/* ── Form elements ─────────────────────────────────────────────────────── */
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.form-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+input[type='text'],
+input[type='password'] {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input[type='text']:focus,
+input[type='password']:focus {
+  border-color: var(--border-focus);
+}
+
+input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Status indicator ──────────────────────────────────────────────────── */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-waiting {
+  background: rgba(255, 167, 38, 0.15);
+  color: var(--warning);
+}
+
+.status-live {
+  background: rgba(102, 187, 106, 0.15);
+  color: var(--success);
+}
+
+.status-ended {
+  background: rgba(239, 83, 80, 0.15);
+  color: var(--danger);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-dot.live {
+  background: var(--success);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.status-dot.waiting {
+  background: var(--warning);
+}
+.status-dot.ended {
+  background: var(--danger);
+}
+
+/* ── Stream list ───────────────────────────────────────────────────────── */
+
+.stream-list {
+  list-style: none;
+}
+
+.stream-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+
+.stream-item:hover {
+  border-color: var(--accent-dim);
+}
+
+.stream-item .info .name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.stream-item .info .meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.stream-item .actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Video player wrapper ──────────────────────────────────────────────── */
+
+.player-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.player-wrapper video {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Danmaku canvas overlay ────────────────────────────────────────────── */
+
+.danmaku-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.danmaku-overlay canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* ── Danmaku input bar ─────────────────────────────────────────────────── */
+
+.danmaku-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.danmaku-bar input {
+  flex: 1;
+}
+
+/* ── Waiting / overlay messages ────────────────────────────────────────── */
+
+.overlay-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text-primary);
+  z-index: 5;
+}
+
+.overlay-msg .icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.overlay-msg .text {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.overlay-msg .sub {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ── Modal / Dialog ────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: var(--shadow);
+}
+
+.modal h2 {
+  margin-bottom: 20px;
+  font-size: 1.2rem;
+}
+
+.modal .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* ── OBS instructions ──────────────────────────────────────────────────── */
+
+.obs-instructions {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.obs-instructions h3 {
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
+.obs-instructions code {
+  display: block;
+  padding: 8px 12px;
+  background: #0a1628;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  user-select: all;
+  word-break: break-all;
+}
+
+/* ── Check result ──────────────────────────────────────────────────────── */
+
+.check-result {
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+.check-result.ok {
+  color: var(--success);
+}
+.check-result.err {
+  color: var(--danger);
+}
+
+/* ── Utility ───────────────────────────────────────────────────────────── */
+
+.text-center {
+  text-align: center;
+}
+.mt-8 {
+  margin-top: 8px;
+}
+.mt-16 {
+  margin-top: 16px;
+}
+.mt-24 {
+  margin-top: 24px;
+}
+.mb-8 {
+  margin-bottom: 8px;
+}
+.mb-16 {
+  margin-bottom: 16px;
+}
+.hidden {
+  display: none !important;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state .icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.empty-state p {
+  font-size: 1.05rem;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

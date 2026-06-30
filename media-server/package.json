@@ -1,0 +1,10 @@
+{
+  "name": "live-stream-media-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RTMP media server for OBS ingestion / HLS relay",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "node-media-server": "^2.7.0"
+  }
+}

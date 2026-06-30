@@ -1,0 +1,27 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Project runtime
+data/
+media/
+logs/
+
+# Environment
+.env
+.venv/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Claude
+.claude/

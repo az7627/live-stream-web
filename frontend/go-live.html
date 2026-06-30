@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Go Live — Live Stream</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="brand">
+        <span class="dot live"></span>
+        <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
+      </div>
+      <span></span>
+    </nav>
+
+    <div class="card" style="max-width:600px;margin:0 auto;">
+      <h2 class="mb-16">📡 发起直播</h2>
+      <p class="mb-16" style="color:var(--text-secondary);font-size:0.9rem;">
+        输入以下信息创建直播流。创建后你会看到 OBS 的设置参数，复制到 OBS 即可推流。
+      </p>
+
+      <!-- 流名称 -->
+      <div class="form-group">
+        <label for="stream-name">流名称</label>
+        <div class="form-row">
+          <div class="form-group">
+            <input type="text" id="stream-name" placeholder="例如：my-game-broadcast" maxlength="64">
+          </div>
+          <button class="btn btn-outline" id="check-btn" style="white-space:nowrap;">检查</button>
+        </div>
+        <div id="name-check" class="check-result"></div>
+      </div>
+
+      <!-- 推流密码 -->
+      <div class="form-group">
+        <label for="push-password">推流密码</label>
+        <input type="password" id="push-password" placeholder="服务端设定的推流密码">
+      </div>
+
+      <!-- 访问密码（观众观看需要） -->
+      <div class="form-group">
+        <label for="view-password">访问密码（观众观看时填写）</label>
+        <input type="password" id="view-password" placeholder="观众进入直播间时需要输入的密码">
+      </div>
+
+      <!-- 提交 -->
+      <button class="btn btn-primary" id="create-btn" disabled style="width:100%;">发起直播</button>
+
+      <!-- 错误信息 -->
+      <p id="form-error" style="color:var(--danger);font-size:0.85rem;margin-top:12px;display:none;"></p>
+
+      <!-- OBS 设置（创建后显示） -->
+      <div id="obs-info" class="obs-instructions hidden">
+        <h3>⚙ OBS 设置</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
+          复制到 OBS → 设置 → 推流：
+        </p>
+
+        <label style="font-size:0.8rem;color:var(--text-muted);">服务器</label>
+        <code>rtmp://<span id="server-host">YOUR_DOMAIN</span>/live</code>
+
+        <label style="font-size:0.8rem;color:var(--text-muted);margin-top:8px;">推流密钥（Stream Key）</label>
+        <code id="obs-key" style="user-select:all;word-break:break-all;font-size:0.78rem;"><span id="obs-stream-key">加载中…</span></code>
+        <p style="font-size:0.75rem;color:var(--text-muted);"><strong>把整行推流密钥复制到 OBS</strong> — 里面包含了认证信息。</p>
+
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:12px;">
+          📺 观看链接：
+          <code id="watch-link" style="display:inline;font-size:0.85rem;padding:2px 6px;"></code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    /* ── DOM refs ──────────────────────────────────────────────────────── */
+    const nameInput  = document.getElementById('stream-name');
+    const checkBtn   = document.getElementById('check-btn');
+    const nameCheck  = document.getElementById('name-check');
+    const pushPwd    = document.getElementById('push-password');
+    const viewPwd    = document.getElementById('view-password');
+    const createBtn  = document.getElementById('create-btn');
+    const formError  = document.getElementById('form-error');
+    const obsInfo    = document.getElementById('obs-info');
+    const serverHost = document.getElementById('server-host');
+    const watchLink  = document.getElementById('watch-link');
+
+    let nameValid = false;
+
+    /* ── 流名称可用性检查 ────────────────────────────────────────────── */
+
+    async function checkName() {
+      let name = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      nameInput.value = name;
+      if (!name) {
+        nameCheck.className = 'check-result err';
+        nameCheck.textContent = '请输入流名称。';
+        nameValid = false;
+        updateCreateBtn();
+        return;
+      }
+
+      nameCheck.className = 'check-result';
+      nameCheck.textContent = '检查中…';
+      try {
+        const data = await api('/api/streams/' + encodeURIComponent(name) + '/exists');
+        if (data.exists) {
+          nameCheck.className = 'check-result err';
+          nameCheck.textContent = '✗ 名称已被占用，请换一个。';
+          nameValid = false;
+        } else {
+          nameCheck.className = 'check-result ok';
+          nameCheck.textContent = '✓ 名称可用！';
+          nameValid = true;
+        }
+      } catch (err) {
+        nameCheck.className = 'check-result err';
+        nameCheck.textContent = '✗ ' + err.message;
+        nameValid = false;
+      }
+      updateCreateBtn();
+    }
+
+    checkBtn.addEventListener('click', checkName);
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') checkName();
+    });
+    nameInput.addEventListener('input', () => {
+      nameValid = false;
+      nameCheck.className = 'check-result';
+      nameCheck.textContent = '';
+      updateCreateBtn();
+    });
+
+    /* ── 按钮状态 ─────────────────────────────────────────────────────── */
+
+    function updateCreateBtn() {
+      createBtn.disabled = !(
+        nameValid &&
+        pushPwd.value.trim().length >= 6 &&
+        viewPwd.value.trim().length >= 4
+      );
+    }
+
+    pushPwd.addEventListener('input', updateCreateBtn);
+    viewPwd.addEventListener('input', updateCreateBtn);
+
+    /* ── 发起直播 ─────────────────────────────────────────────────────── */
+
+    createBtn.addEventListener('click', async () => {
+      const name = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      if (!nameValid) {
+        showFormError('请先检查流名称是否可用。');
+        return;
+      }
+
+      const pushPwdVal = pushPwd.value.trim();
+      if (!pushPwdVal || pushPwdVal.length < 6) {
+        showFormError('推流密码至少需要 6 个字符。');
+        return;
+      }
+
+      const viewPwdVal = viewPwd.value.trim();
+      if (!viewPwdVal || viewPwdVal.length < 4) {
+        showFormError('访问密码至少需要 4 个字符。');
+        return;
+      }
+
+      createBtn.disabled = true;
+      createBtn.textContent = '创建中…';
+      formError.style.display = 'none';
+
+      try {
+        // 先验证推流密码
+        await apiPost('/api/validate_push_password', {
+          stream_name: name,
+          password: pushPwdVal,
+        });
+
+        // 推流密码正确，创建直播流
+        await apiPost('/api/streams/create', {
+          name: name,
+          view_password: viewPwdVal,
+        });
+
+        showObsInfo(name);
+      } catch (err) {
+        showFormError(err.message);
+        createBtn.disabled = false;
+        createBtn.textContent = '发起直播';
+      }
+    });
+
+    /* ── 显示 OBS 设置 ────────────────────────────────────────────────── */
+
+    function showObsInfo(streamName) {
+      createBtn.textContent = '✓ 直播已创建';
+      createBtn.style.background = 'var(--success)';
+
+      serverHost.textContent = window.location.hostname;
+
+      // 观看链接
+      const url = new URL('/watch/' + encodeURIComponent(streamName), window.location.origin);
+      watchLink.textContent = url.toString();
+
+      // 获取带认证签名的推流密钥
+      api('/api/streams/' + encodeURIComponent(streamName) + '/stream-key')
+        .then(data => {
+          document.getElementById('obs-stream-key').textContent = data.stream_key;
+        })
+        .catch(() => {
+          document.getElementById('obs-stream-key').textContent = streamName + '?auth=ERROR';
+        });
+
+      obsInfo.classList.remove('hidden');
+      nameInput.disabled = true;
+      pushPwd.disabled = true;
+      viewPwd.disabled = true;
+    }
+
+    function showFormError(msg) {
+      formError.textContent = msg;
+      formError.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

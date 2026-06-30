@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Stream</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Navbar -->
+    <nav class="navbar">
+      <div class="brand">
+        <span class="dot live"></span>
+        Live Stream
+      </div>
+      <a href="/go-live" class="btn btn-primary">📡 Go Live</a>
+    </nav>
+
+    <!-- Stream list -->
+    <h2 class="mb-16">🎬 Active Streams</h2>
+    <div id="stream-list">
+      <div class="empty-state">
+        <div class="icon">📺</div>
+        <p>No active streams right now.</p>
+        <p class="sub mt-8" style="color:var(--text-muted);font-size:0.9rem;">
+          <a href="/go-live">Start one</a> and share the link!
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password modal -->
+  <div id="password-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>🔑 Enter Viewing Password</h2>
+      <div class="form-group">
+        <label for="modal-password">Password</label>
+        <input type="password" id="modal-password" placeholder="Enter password">
+      </div>
+      <p id="modal-error" style="color:var(--danger);font-size:0.85rem;display:none;"></p>
+      <div class="actions">
+        <button class="btn btn-outline" id="modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-confirm">Watch</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    const listEl = document.getElementById('stream-list');
+    const modalOverlay = document.getElementById('password-modal');
+    const modalPassword = document.getElementById('modal-password');
+    const modalError = document.getElementById('modal-error');
+    const modalCancel = document.getElementById('modal-cancel');
+    const modalConfirm = document.getElementById('modal-confirm');
+
+    let pendingStream = ''; // stream name waiting for password
+
+    async function loadStreams() {
+      try {
+        const streams = await api('/api/streams');
+        renderStreams(streams);
+      } catch (err) {
+        listEl.innerHTML = `<div class="empty-state"><p style="color:var(--danger)">Failed to load streams: ${esc(err.message)}</p></div>`;
+      }
+    }
+
+    function renderStreams(streams) {
+      if (!streams || streams.length === 0) {
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📺</div>
+            <p>No active streams right now.</p>
+            <p class="sub mt-8" style="color:var(--text-muted);font-size:0.9rem;">
+              <a href="/go-live">Start one</a> and share the link!
+            </p>
+          </div>`;
+        return;
+      }
+
+      let html = '<div class="stream-list">';
+      for (const s of streams) {
+        const statusClass = s.status === 'live' ? 'status-live' : s.status === 'waiting' ? 'status-waiting' : 'status-ended';
+        const dotClass = s.status === 'live' ? 'live' : s.status === 'waiting' ? 'waiting' : 'ended';
+        const label = s.status === 'live' ? 'LIVE' : s.status === 'waiting' ? 'Waiting' : 'Ended';
+        const started = s.started_at
+          ? new Date(s.started_at).toLocaleTimeString()
+          : s.created_at
+            ? new Date(s.created_at).toLocaleTimeString()
+            : '--';
+
+        html += `
+          <div class="stream-item">
+            <div class="info">
+              <div class="name">${esc(s.name)}</div>
+              <div class="meta">
+                <span class="status-badge ${statusClass}">
+                  <span class="status-dot ${dotClass}"></span>
+                  ${label}
+                </span>
+                &middot; ${started}
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary btn-sm" onclick="promptPassword('${esc(s.name)}')">▶ Watch</button>
+            </div>
+          </div>`;
+      }
+      html += '</div>';
+      listEl.innerHTML = html;
+    }
+
+    /* ── Password modal ────────────────────────────────────────────────── */
+
+    function promptPassword(streamName) {
+      pendingStream = streamName;
+      modalPassword.value = '';
+      modalError.style.display = 'none';
+      modalError.textContent = '';
+      modalOverlay.classList.remove('hidden');
+      modalPassword.focus();
+    }
+
+    modalCancel.addEventListener('click', () => {
+      modalOverlay.classList.add('hidden');
+      pendingStream = '';
+    });
+
+    modalConfirm.addEventListener('click', async () => {
+      const pwd = modalPassword.value.trim();
+      if (!pwd) {
+        showModalError('Please enter a password.');
+        return;
+      }
+      try {
+        await apiPost('/api/streams/validate_view', {
+          stream_name: pendingStream,
+          password: pwd,
+        });
+        modalOverlay.classList.add('hidden');
+        // Store in sessionStorage — never put the password in the URL
+        sessionStorage.setItem('view_pwd_' + pendingStream, pwd);
+        window.location.href = `/watch/${encodeURIComponent(pendingStream)}`;
+      } catch (err) {
+        showModalError(err.message);
+      }
+    });
+
+    modalPassword.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') modalConfirm.click();
+      if (e.key === 'Escape') modalCancel.click();
+    });
+
+    function showModalError(msg) {
+      modalError.textContent = msg;
+      modalError.style.display = 'block';
+    }
+
+    // Auto-refresh stream list every 10 seconds
+    loadStreams();
+    setInterval(loadStreams, 10000);
+  </script>
+</body>
+</html>
