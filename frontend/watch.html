@@ -47,6 +47,9 @@
         <div class="icon">⚠️</div>
         <div class="text" id="error-text">Could not load stream.</div>
       </div>
+
+      <!-- Fullscreen toggle -->
+      <button class="fs-toggle" id="fs-toggle" title="Fullscreen / Exit fullscreen">⛶</button>
     </div>
 
     <!-- Danmaku input bar -->
@@ -298,6 +301,37 @@
     danmakuSend.addEventListener('click', sendDanmaku);
     danmakuInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') sendDanmaku();
+    });
+
+    /* ── Fullscreen ─────────────────────────────────────────────────────── */
+
+    const fsToggle = document.getElementById('fs-toggle');
+    const playerWrapper = document.getElementById('player-wrapper');
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        playerWrapper.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
+          // Fullscreen API may be denied or unavailable
+        });
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    fsToggle.addEventListener('click', toggleFullscreen);
+
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement === playerWrapper) {
+        fsToggle.classList.add('active');
+        fsToggle.textContent = '⛶';
+        fsToggle.title = 'Exit fullscreen';
+      } else {
+        fsToggle.classList.remove('active');
+        fsToggle.textContent = '⛶';
+        fsToggle.title = 'Fullscreen';
+      }
+      // Let the danmaku canvas and other elements recalculate dimensions
+      window.dispatchEvent(new Event('resize'));
     });
 
     /* ── Cleanup ───────────────────────────────────────────────────────── */
