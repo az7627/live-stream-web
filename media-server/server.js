@@ -124,6 +124,7 @@ function stopHls(streamName) {
 const config = {
   rtmp: {
     port: 1935,
+    host: '::',
     chunk_size: 60000,
     gop_cache: true,
     ping: 30,

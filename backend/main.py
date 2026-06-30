@@ -98,6 +98,22 @@ class ValidateViewReq(BaseModel):
     password: str
 
 
+# ── Admin schemas ─────────────────────────────────────────────────────────
+
+class AdminReq(BaseModel):
+    password: str  # push password
+
+
+class UpdateViewPasswordReq(BaseModel):
+    password: str
+    view_password: str
+
+
+class ChangePushPasswordReq(BaseModel):
+    old_password: str
+    new_password: str
+
+
 # ── Danmaku WebSocket manager ──────────────────────────────────────────────
 
 class DanmakuManager:
@@ -325,6 +341,114 @@ def end_stream(name: str):
     return {"success": True}
 
 
+@app.post("/api/admin/streams")
+def admin_list_streams(req: AdminReq):
+    """List all streams (including ended). Requires push password."""
+    _verify_admin(req.password)
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name, status, created_at, started_at, ended_at FROM streams ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/admin/streams/{name}/delete")
+def admin_delete_stream(name: str, req: AdminReq):
+    """Delete a stream and its HLS files. Requires push password."""
+    _verify_admin(req.password)
+    name = normalize_name(name)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM streams WHERE name = ?", (name,))
+        conn.commit()
+    # Clean up HLS files
+    stream_dir = MEDIA_HLS / "live" / name
+    if stream_dir.exists():
+        import shutil
+        shutil.rmtree(stream_dir)
+    return {"success": True}
+
+
+@app.post("/api/admin/streams/{name}/end")
+def admin_end_stream(name: str, req: AdminReq):
+    """Mark a stream as ended. Requires push password."""
+    _verify_admin(req.password)
+    name = normalize_name(name)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE streams SET status = 'ended', ended_at = ? WHERE name = ?",
+            (datetime.now(timezone.utc).isoformat(), name),
+        )
+        conn.commit()
+    return {"success": True}
+
+
+@app.post("/api/admin/streams/{name}/update-password")
+def admin_update_view_password(name: str, req: UpdateViewPasswordReq):
+    """Change the viewing password for a stream. Requires push password."""
+    _verify_admin(req.password)
+    name = normalize_name(name)
+    if not req.view_password or len(req.view_password) < 4:
+        raise HTTPException(400, "View password must be at least 4 characters")
+    hashed, salt = hash_password(req.view_password)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE streams SET view_password_hash = ?, view_password_salt = ? WHERE name = ?",
+            (hashed, salt, name),
+        )
+        conn.commit()
+    return {"success": True}
+
+
+@app.post("/api/admin/change-push-password")
+def admin_change_push_password(req: ChangePushPasswordReq):
+    """Change the server-wide push password. Requires current push password."""
+    with get_conn() as conn:
+        push_hash = conn.execute(
+            "SELECT value FROM config WHERE key = 'push_password_hash'"
+        ).fetchone()
+        push_salt = conn.execute(
+            "SELECT value FROM config WHERE key = 'push_password_salt'"
+        ).fetchone()
+
+    if not push_hash or not push_salt:
+        raise HTTPException(500, "Push password not configured")
+
+    if not verify_password(req.old_password, push_hash["value"], push_salt["value"]):
+        raise HTTPException(403, "Current push password is incorrect")
+
+    if len(req.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+
+    hashed, salt = hash_password(req.new_password)
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            ("push_password_salt", salt),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            ("push_password_hash", hashed),
+        )
+        conn.commit()
+    return {"success": True}
+
+
+# ── Helper ─────────────────────────────────────────────────────────────────
+
+def _verify_admin(password: str) -> None:
+    with get_conn() as conn:
+        push_hash = conn.execute(
+            "SELECT value FROM config WHERE key = 'push_password_hash'"
+        ).fetchone()
+        push_salt = conn.execute(
+            "SELECT value FROM config WHERE key = 'push_password_salt'"
+        ).fetchone()
+    if not push_hash or not push_salt:
+        raise HTTPException(500, "Push password not configured — run change_push_password.py")
+    if not verify_password(password, push_hash["value"], push_salt["value"]):
+        raise HTTPException(403, "Invalid admin password")
+
+
 # ── Danmaku WebSocket ─────────────────────────────────────────────────────
 
 @app.websocket("/ws/{stream_name}")
@@ -368,6 +492,11 @@ def go_live():
     return FileResponse(str(FRONTEND_DIR / "go-live.html"))
 
 
+@app.get("/manage")
+def manage():
+    return FileResponse(str(FRONTEND_DIR / "manage.html"))
+
+
 @app.get("/watch/{stream_name:path}")
 def watch(stream_name: str):
     return FileResponse(str(FRONTEND_DIR / "watch.html"))
@@ -390,7 +519,7 @@ if __name__ == "__main__":
     CERT = Path("C:/Users/a233d/Documents/cert")
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host="::",
         port=443,
         ssl_keyfile=str(CERT / "az7627.top.key"),
         ssl_certfile=str(CERT / "az7627.top.pem"),

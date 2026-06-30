@@ -98,7 +98,7 @@ def main():
     web_proc = subprocess.Popen(
         [
             PYTHON, "-m", "uvicorn", "main:app",
-            "--host", "0.0.0.0",
+            "--host", "::",
             "--port", "443",
             "--ssl-keyfile", str(CERT_DIR / "az7627.top.key"),
             "--ssl-certfile", str(CERT_DIR / "az7627.top.pem"),

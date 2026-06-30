@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage — Live Stream</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="brand">
+        <span class="dot live"></span>
+        <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
+      </div>
+      <a href="/go-live" class="btn btn-outline btn-sm">📡 Go Live</a>
+      <a href="/" class="btn btn-outline btn-sm">← Home</a>
+    </nav>
+
+    <h2 class="mb-16">⚙ Admin Panel</h2>
+    <p class="mb-16" style="color:var(--text-secondary);font-size:0.9rem;">
+      Manage live streams — end, delete, or change viewing passwords.
+    </p>
+
+    <!-- Password gate -->
+    <div id="login-section" class="card" style="max-width:480px;margin:0 auto;">
+      <h3 class="mb-16">🔑 Admin Authentication</h3>
+      <p class="mb-16" style="font-size:0.85rem;color:var(--text-secondary);">
+        Enter the server push password to access management.
+      </p>
+      <div class="form-group">
+        <label for="admin-pwd">Push Password</label>
+        <input type="password" id="admin-pwd" placeholder="Enter push password">
+      </div>
+      <p id="admin-login-error" style="color:var(--danger);font-size:0.85rem;display:none;"></p>
+      <button class="btn btn-primary" id="admin-login-btn" style="width:100%;">Login</button>
+    </div>
+
+    <!-- Stream management (hidden until authenticated) -->
+    <div id="admin-panel" class="hidden">
+      <!-- Status summary -->
+      <div id="stream-summary" class="mb-16" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+
+      <!-- Actions bar -->
+      <div class="mb-16" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <a href="/go-live" class="btn btn-outline">📡 Start New Stream</a>
+        <button class="btn btn-outline" id="refresh-list-btn">🔄 Refresh</button>
+        <button class="btn btn-outline" id="change-push-pwd-btn">🔐 Change Push Password</button>
+      </div>
+
+      <!-- Stream table -->
+      <div id="stream-table-wrapper">
+        <div class="empty-state" id="loading-state">
+          <p>Loading streams…</p>
+        </div>
+      </div>
+
+      <!-- Push password change (collapsible) -->
+      <div id="push-pwd-section" class="card hidden" style="margin-top:24px;">
+        <h3 class="mb-16">🔐 Change Push Password</h3>
+        <p class="mb-16" style="font-size:0.85rem;color:var(--text-secondary);">
+          This changes the password OBS streamers use to push.
+        </p>
+        <div class="form-group">
+          <label for="cur-push-pwd">Current Password</label>
+          <input type="password" id="cur-push-pwd">
+        </div>
+        <div class="form-group">
+          <label for="new-push-pwd">New Password (min 6 chars)</label>
+          <input type="password" id="new-push-pwd">
+        </div>
+        <div class="form-group">
+          <label for="confirm-push-pwd">Confirm New Password</label>
+          <input type="password" id="confirm-push-pwd">
+        </div>
+        <p id="push-pwd-error" style="color:var(--danger);font-size:0.85rem;display:none;"></p>
+        <p id="push-pwd-success" style="color:var(--success);font-size:0.85rem;display:none;"></p>
+        <button class="btn btn-primary" id="change-push-pwd-submit">Update Push Password</button>
+      </div>
+    </div>
+
+    <!-- Password change modal (for individual stream view password) -->
+    <div id="change-pwd-modal" class="modal-overlay hidden" style="z-index:200;">
+      <div class="modal">
+        <h3>🔑 Change Viewing Password</h3>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
+          Stream: <strong id="change-pwd-stream-name"></strong>
+        </p>
+        <div class="form-group">
+          <label for="new-view-pwd">New Viewing Password (min 4 chars)</label>
+          <input type="password" id="new-view-pwd">
+        </div>
+        <p id="change-pwd-error" style="color:var(--danger);font-size:0.85rem;display:none;"></p>
+        <p id="change-pwd-success" style="color:var(--success);font-size:0.85rem;display:none;"></p>
+        <div class="actions">
+          <button class="btn btn-outline" id="change-pwd-cancel">Cancel</button>
+          <button class="btn btn-primary" id="change-pwd-confirm">Update</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    /* ── State ──────────────────────────────────────────────────────────── */
+
+    const PWD_KEY = 'admin_push_pwd';
+    let adminPassword = sessionStorage.getItem(PWD_KEY);
+    let streams = [];
+
+    /* ── DOM refs ───────────────────────────────────────────────────────── */
+
+    const loginSection = document.getElementById('login-section');
+    const adminPwd = document.getElementById('admin-pwd');
+    const adminLoginError = document.getElementById('admin-login-error');
+    const adminLoginBtn = document.getElementById('admin-login-btn');
+    const adminPanel = document.getElementById('admin-panel');
+    const streamSummary = document.getElementById('stream-summary');
+    const streamTableWrapper = document.getElementById('stream-table-wrapper');
+    const refreshListBtn = document.getElementById('refresh-list-btn');
+    const loadingState = document.getElementById('loading-state');
+    const pushPwdSection = document.getElementById('push-pwd-section');
+    const changePushPwdBtn = document.getElementById('change-push-pwd-btn');
+    const curPushPwd = document.getElementById('cur-push-pwd');
+    const newPushPwd = document.getElementById('new-push-pwd');
+    const confirmPushPwd = document.getElementById('confirm-push-pwd');
+    const pushPwdError = document.getElementById('push-pwd-error');
+    const pushPwdSuccess = document.getElementById('push-pwd-success');
+    const changePushPwdSubmit = document.getElementById('change-push-pwd-submit');
+
+    const changePwdModal = document.getElementById('change-pwd-modal');
+    const changePwdStreamName = document.getElementById('change-pwd-stream-name');
+    const newViewPwd = document.getElementById('new-view-pwd');
+    const changePwdError = document.getElementById('change-pwd-error');
+    const changePwdSuccess = document.getElementById('change-pwd-success');
+    const changePwdCancel = document.getElementById('change-pwd-cancel');
+    const changePwdConfirm = document.getElementById('change-pwd-confirm');
+
+    let changePwdTarget = '';  // stream name for the modal
+
+    /* ── Login ──────────────────────────────────────────────────────────── */
+
+    function showLoginError(msg) {
+      adminLoginError.textContent = msg;
+      adminLoginError.style.display = 'block';
+    }
+
+    async function handleLogin() {
+      const pwd = adminPwd.value.trim();
+      if (!pwd) {
+        showLoginError('Please enter the push password.');
+        return;
+      }
+      adminLoginBtn.disabled = true;
+      adminLoginBtn.textContent = 'Verifying…';
+      adminLoginError.style.display = 'none';
+
+      try {
+        // Validate by calling the list endpoint
+        await apiPost('/api/admin/streams', { password: pwd });
+        adminPassword = pwd;
+        sessionStorage.setItem(PWD_KEY, pwd);
+        loginSection.classList.add('hidden');
+        adminPanel.classList.remove('hidden');
+        loadStreams();
+      } catch (err) {
+        showLoginError(err.message);
+      } finally {
+        adminLoginBtn.disabled = false;
+        adminLoginBtn.textContent = 'Login';
+      }
+    }
+
+    adminLoginBtn.addEventListener('click', handleLogin);
+    adminPwd.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+
+    // Auto-login if password already in session
+    if (adminPassword) {
+      (async () => {
+        try {
+          await apiPost('/api/admin/streams', { password: adminPassword });
+          loginSection.classList.add('hidden');
+          adminPanel.classList.remove('hidden');
+          loadStreams();
+        } catch (_) {
+          // Password expired or invalid — show login
+          sessionStorage.removeItem(PWD_KEY);
+          adminPassword = null;
+        }
+      })();
+    }
+
+    /* ── Load streams ───────────────────────────────────────────────────── */
+
+    async function loadStreams() {
+      streamTableWrapper.innerHTML = `<div class="empty-state"><p>Loading streams…</p></div>`;
+      try {
+        const data = await apiPost('/api/admin/streams', { password: adminPassword });
+        streams = data;
+        renderStreams();
+      } catch (err) {
+        streamTableWrapper.innerHTML = `<div class="empty-state"><p style="color:var(--danger)">Failed to load: ${esc(err.message)}</p></div>`;
+      }
+    }
+
+    function renderStreams() {
+      const live = streams.filter(s => s.status === 'live').length;
+      const waiting = streams.filter(s => s.status === 'waiting').length;
+      const ended = streams.filter(s => s.status === 'ended').length;
+
+      streamSummary.innerHTML = `
+        <span class="status-badge status-live">● ${live} Live</span>
+        <span class="status-badge status-waiting">● ${waiting} Waiting</span>
+        <span class="status-badge status-ended">● ${ended} Ended</span>
+        <span style="color:var(--text-muted);font-size:0.85rem;line-height:2;">Total: ${streams.length}</span>
+      `;
+
+      if (streams.length === 0) {
+        streamTableWrapper.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📺</div>
+            <p>No streams yet.</p>
+            <p class="sub mt-8"><a href="/go-live">Start one</a> from the Go Live page.</p>
+          </div>`;
+        return;
+      }
+
+      let html = '<div class="stream-list">';
+      for (const s of streams) {
+        const dotClass = s.status === 'live' ? 'live' : s.status === 'waiting' ? 'waiting' : 'ended';
+        const label = s.status === 'live' ? 'LIVE' : s.status === 'waiting' ? 'Waiting' : 'Ended';
+        const statusClass = 'status-' + s.status;
+        const created = s.created_at
+          ? new Date(s.created_at).toLocaleString()
+          : '--';
+        const canEnd = s.status !== 'ended';
+        const watchUrl = `/watch/${encodeURIComponent(s.name)}`;
+
+        html += `
+          <div class="stream-item" data-name="${esc(s.name)}">
+            <div class="info">
+              <div class="name">${esc(s.name)}</div>
+              <div class="meta">
+                <span class="status-badge ${statusClass}">
+                  <span class="status-dot ${dotClass}"></span> ${label}
+                </span>
+                &middot; ${created}
+              </div>
+            </div>
+            <div class="actions" style="flex-wrap:wrap;">
+              <a href="${watchUrl}" class="btn btn-primary btn-sm" target="_blank">▶ Watch</a>
+              ${canEnd ? `<button class="btn btn-outline btn-sm" onclick="endStream('${esc(s.name)}')">⏹ End</button>` : ''}
+              <button class="btn btn-outline btn-sm" onclick="openChangePwd('${esc(s.name)}')">🔑 Change PW</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteStream('${esc(s.name)}')">🗑 Delete</button>
+            </div>
+          </div>`;
+      }
+      html += '</div>';
+      streamTableWrapper.innerHTML = html;
+    }
+
+    refreshListBtn.addEventListener('click', loadStreams);
+
+    /* ── Actions ────────────────────────────────────────────────────────── */
+
+    async function endStream(name) {
+      if (!confirm(`End stream "${name}"? Viewers will see "Ended".`)) return;
+      try {
+        await apiPost(`/api/admin/streams/${encodeURIComponent(name)}/end`, { password: adminPassword });
+        loadStreams();
+      } catch (err) {
+        alert('Failed to end stream: ' + err.message);
+      }
+    }
+
+    async function deleteStream(name) {
+      if (!confirm(`Delete stream "${name}" permanently? This cannot be undone.`)) return;
+      try {
+        await apiPost(`/api/admin/streams/${encodeURIComponent(name)}/delete`, { password: adminPassword });
+        loadStreams();
+      } catch (err) {
+        alert('Failed to delete stream: ' + err.message);
+      }
+    }
+
+    /* ── Change view password modal ─────────────────────────────────────── */
+
+    function openChangePwd(name) {
+      changePwdTarget = name;
+      changePwdStreamName.textContent = name;
+      newViewPwd.value = '';
+      changePwdError.style.display = 'none';
+      changePwdSuccess.style.display = 'none';
+      changePwdModal.classList.remove('hidden');
+      newViewPwd.focus();
+    }
+
+    changePwdCancel.addEventListener('click', () => {
+      changePwdModal.classList.add('hidden');
+      changePwdTarget = '';
+    });
+
+    changePwdConfirm.addEventListener('click', async () => {
+      const pwd = newViewPwd.value.trim();
+      if (!pwd || pwd.length < 4) {
+        changePwdError.textContent = 'Password must be at least 4 characters.';
+        changePwdError.style.display = 'block';
+        return;
+      }
+      changePwdConfirm.disabled = true;
+      changePwdConfirm.textContent = 'Updating…';
+      try {
+        await apiPost(`/api/admin/streams/${encodeURIComponent(changePwdTarget)}/update-password`, {
+          password: adminPassword,
+          view_password: pwd,
+        });
+        changePwdSuccess.textContent = '✓ Password updated. Viewers will need to re-authenticate.';
+        changePwdSuccess.style.display = 'block';
+        changePwdError.style.display = 'none';
+        setTimeout(() => {
+          changePwdModal.classList.add('hidden');
+        }, 1500);
+      } catch (err) {
+        changePwdError.textContent = err.message;
+        changePwdError.style.display = 'block';
+      } finally {
+        changePwdConfirm.disabled = false;
+        changePwdConfirm.textContent = 'Update';
+      }
+    });
+
+    newViewPwd.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') changePwdConfirm.click();
+      if (e.key === 'Escape') changePwdCancel.click();
+    });
+
+    /* ── Change push password ───────────────────────────────────────────── */
+
+    changePushPwdBtn.addEventListener('click', () => {
+      pushPwdSection.classList.toggle('hidden');
+      if (!pushPwdSection.classList.contains('hidden')) {
+        curPushPwd.focus();
+      }
+    });
+
+    changePushPwdSubmit.addEventListener('click', async () => {
+      const old = curPushPwd.value.trim();
+      const newP = newPushPwd.value.trim();
+      const confirm = confirmPushPwd.value.trim();
+
+      pushPwdError.style.display = 'none';
+      pushPwdSuccess.style.display = 'none';
+
+      if (!old || !newP || !confirm) {
+        pushPwdError.textContent = 'Please fill in all fields.';
+        pushPwdError.style.display = 'block';
+        return;
+      }
+      if (newP !== confirm) {
+        pushPwdError.textContent = 'New passwords do not match.';
+        pushPwdError.style.display = 'block';
+        return;
+      }
+      if (newP.length < 6) {
+        pushPwdError.textContent = 'New password must be at least 6 characters.';
+        pushPwdError.style.display = 'block';
+        return;
+      }
+
+      changePushPwdSubmit.disabled = true;
+      changePushPwdSubmit.textContent = 'Updating…';
+      try {
+        await apiPost('/api/admin/change-push-password', {
+          old_password: old,
+          new_password: newP,
+        });
+        // Update stored admin password
+        adminPassword = newP;
+        sessionStorage.setItem(PWD_KEY, newP);
+        pushPwdSuccess.textContent = '✓ Push password updated successfully!';
+        pushPwdSuccess.style.display = 'block';
+        curPushPwd.value = '';
+        newPushPwd.value = '';
+        confirmPushPwd.value = '';
+      } catch (err) {
+        pushPwdError.textContent = err.message;
+        pushPwdError.style.display = 'block';
+      } finally {
+        changePushPwdSubmit.disabled = false;
+        changePushPwdSubmit.textContent = 'Update Push Password';
+      }
+    });
+  </script>
+</body>
+</html>

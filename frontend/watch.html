@@ -15,6 +15,7 @@
         <span class="dot live"></span>
         <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
       </div>
+      <a href="/manage" class="btn btn-outline btn-sm">⚙ Manage</a>
       <a href="/" class="btn btn-outline btn-sm">← Back</a>
     </nav>
 
@@ -48,14 +49,31 @@
         <div class="text" id="error-text">Could not load stream.</div>
       </div>
 
-      <!-- Fullscreen toggle -->
-      <button class="fs-toggle" id="fs-toggle" title="Fullscreen / Exit fullscreen">⛶</button>
+      <!-- Player control buttons -->
+      <button class="player-btn" id="refresh-btn" title="Reload stream">⟳</button>
+      <button class="player-btn fs-toggle" id="fs-toggle" title="Fullscreen">⛶</button>
     </div>
 
     <!-- Danmaku input bar -->
     <div class="danmaku-bar">
       <input type="text" id="danmaku-input" placeholder="Type a danmaku…" maxlength="200">
       <button class="btn btn-primary btn-sm" id="danmaku-send">Send</button>
+    </div>
+
+    <!-- Re-auth overlay (shown when password changes / session expires) -->
+    <div id="reauth-overlay" class="modal-overlay hidden" style="z-index:200;">
+      <div class="modal">
+        <h2>🔑 Password Required</h2>
+        <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
+          The viewing password has changed or your session expired.
+        </p>
+        <div class="form-group">
+          <label for="reauth-password">Viewing Password</label>
+          <input type="password" id="reauth-password" placeholder="Enter viewing password">
+        </div>
+        <p id="reauth-error" style="color:var(--danger);font-size:0.85rem;display:none;"></p>
+        <button class="btn btn-primary" id="reauth-confirm" style="width:100%;">Watch</button>
+      </div>
     </div>
 
     <!-- Connection status -->
@@ -70,12 +88,12 @@
     /* ── Initialisation ────────────────────────────────────────────────── */
 
     const streamName = window.location.pathname.replace('/watch/', '');
-    // Read the viewing password from sessionStorage (set by index.html)
-    const viewPassword = sessionStorage.getItem('view_pwd_' + streamName);
+    let viewPassword = sessionStorage.getItem('view_pwd_' + streamName);
 
     const titleEl = document.getElementById('stream-title');
     const statusBadge = document.getElementById('stream-status-badge');
     const video = document.getElementById('video');
+    const playerWrapper = document.getElementById('player-wrapper');
     const overlayWaiting = document.getElementById('overlay-waiting');
     const overlayEnded = document.getElementById('overlay-ended');
     const overlayError = document.getElementById('overlay-error');
@@ -83,13 +101,18 @@
     const danmakuInput = document.getElementById('danmaku-input');
     const danmakuSend = document.getElementById('danmaku-send');
     const wsStatus = document.getElementById('ws-status');
+    const fsToggle = document.getElementById('fs-toggle');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const reauthOverlay = document.getElementById('reauth-overlay');
+    const reauthPassword = document.getElementById('reauth-password');
+    const reauthError = document.getElementById('reauth-error');
+    const reauthConfirm = document.getElementById('reauth-confirm');
 
     titleEl.textContent = `🎬 ${streamName}`;
 
     /* ── Validate viewing password first ───────────────────────────────── */
 
     if (!viewPassword) {
-      // No password in URL — redirect home
       window.location.href = '/';
     }
 
@@ -98,6 +121,7 @@
     let danmaku = null;
     let ws = null;
     let pollTimer = null;
+    let pwdValidationTimer = null;
     let isLive = false;
 
     (async () => {
@@ -111,14 +135,14 @@
 
         if (streamStatus === 'ended') {
           showOverlay('ended');
+          startPwdValidation();
           return;
         }
 
-        // Start danmaku
         initDanmaku();
         connectWebSocket();
+        startPwdValidation();
 
-        // Start polling / attempting HLS playback
         if (streamStatus === 'live') {
           startHls();
         } else {
@@ -169,7 +193,7 @@
     function startHls() {
       if (hls) return;
       isLive = true;
-      showOverlay('waiting'); // shown until first segment loads
+      showOverlay('waiting');
 
       const hlsUrl = `/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
 
@@ -180,16 +204,14 @@
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           video.muted = false;
           video.play().catch(() => {});
-          showOverlay(null); // hide all overlays
+          showOverlay(null);
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (data.fatal) {
-            // Stream might have ended - check status
             checkStreamEnded();
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS (Safari)
         video.src = hlsUrl;
         video.addEventListener('loadedmetadata', () => {
           video.muted = false;
@@ -201,6 +223,26 @@
         errorText.textContent = 'HLS is not supported in this browser.';
       }
     }
+
+    /**
+     * Reload the HLS stream without refreshing the page.
+     * Destroys the current hls.js instance and creates a fresh one.
+     */
+    function reloadStream() {
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      } else {
+        video.src = '';
+        video.load();
+      }
+      isLive = false;
+      showOverlay('waiting');
+      // Small delay ensures old segments are cleared
+      setTimeout(() => startHls(), 500);
+    }
+
+    refreshBtn.addEventListener('click', reloadStream);
 
     /* ── Poll for stream to go live ────────────────────────────────────── */
 
@@ -215,16 +257,13 @@
           if (data.status === 'live') {
             clearInterval(pollTimer);
             pollTimer = null;
-            // Give FFmpeg a moment to generate first HLS segments
             setTimeout(() => startHls(), 3000);
           } else if (data.status === 'ended') {
             clearInterval(pollTimer);
             pollTimer = null;
             showOverlay('ended');
           }
-        } catch (_) {
-          // ignore, keep polling
-        }
+        } catch (_) {}
       }, 3000);
     }
 
@@ -240,6 +279,87 @@
         }
       } catch (_) {}
     }
+
+    /* ── Periodic password validation (every 60s, 10s timeout) ─────────── */
+
+    function startPwdValidation() {
+      if (pwdValidationTimer) return;
+      pwdValidationTimer = setInterval(async () => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          await apiPost('/api/streams/validate_view', {
+            stream_name: streamName,
+            password: viewPassword,
+          }, { signal: controller.signal });
+          clearTimeout(timeoutId);
+        } catch (_) {
+          stopPwdValidation();
+          showReauthOverlay();
+        }
+      }, 60000);
+    }
+
+    function stopPwdValidation() {
+      if (pwdValidationTimer) {
+        clearInterval(pwdValidationTimer);
+        pwdValidationTimer = null;
+      }
+    }
+
+    /* ── Re-authentication overlay ──────────────────────────────────────── */
+
+    function showReauthOverlay() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (hls) { hls.destroy(); hls = null; isLive = false; }
+      if (danmaku) { danmaku.destroy(); danmaku = null; }
+      if (ws) { try { ws.close(); } catch {} ws = null; }
+      stopPwdValidation();
+      video.src = '';
+      video.load();
+      reauthPassword.value = '';
+      reauthError.style.display = 'none';
+      reauthOverlay.classList.remove('hidden');
+      reauthPassword.focus();
+    }
+
+    async function handleReauth() {
+      const pwd = reauthPassword.value.trim();
+      if (!pwd) return;
+      reauthConfirm.disabled = true;
+      reauthConfirm.textContent = 'Verifying…';
+      try {
+        await apiPost('/api/streams/validate_view', {
+          stream_name: streamName,
+          password: pwd,
+        });
+        viewPassword = pwd;
+        sessionStorage.setItem('view_pwd_' + streamName, pwd);
+        reauthOverlay.classList.add('hidden');
+        reauthError.style.display = 'none';
+        reauthConfirm.disabled = false;
+        reauthConfirm.textContent = 'Watch';
+
+        // Re-init everything
+        initDanmaku();
+        connectWebSocket();
+        startPwdValidation();
+        streamStatus = 'live';
+        updateStatusUI('live');
+        startHls();
+      } catch (err) {
+        reauthError.textContent = err.message;
+        reauthError.style.display = 'block';
+        reauthConfirm.disabled = false;
+        reauthConfirm.textContent = 'Watch';
+        reauthPassword.focus();
+      }
+    }
+
+    reauthConfirm.addEventListener('click', handleReauth);
+    reauthPassword.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleReauth();
+    });
 
     /* ── Danmaku ───────────────────────────────────────────────────────── */
 
@@ -264,7 +384,6 @@
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'danmaku' && danmaku) {
-            // Add slight rainbow variation for visual flair
             const colors = ['#FFFFFF', '#FFD700', '#00E5FF', '#FF4081', '#B388FF', '#69F0AE'];
             const color = msg.color || colors[Math.floor(Math.random() * colors.length)];
             danmaku.send(msg.text, color);
@@ -275,7 +394,6 @@
       ws.onclose = () => {
         wsStatus.textContent = '● Disconnected — danmaku unavailable';
         wsStatus.style.color = 'var(--danger)';
-        // Auto-reconnect after 3s
         setTimeout(() => {
           if (document.hidden) return;
           connectWebSocket();
@@ -294,7 +412,7 @@
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
 
       ws.send(JSON.stringify({ type: 'danmaku', text }));
-      danmaku.send(text, '#FFFFFF'); // echo locally
+      danmaku.send(text, '#FFFFFF');
       danmakuInput.value = '';
     }
 
@@ -305,14 +423,9 @@
 
     /* ── Fullscreen ─────────────────────────────────────────────────────── */
 
-    const fsToggle = document.getElementById('fs-toggle');
-    const playerWrapper = document.getElementById('player-wrapper');
-
     function toggleFullscreen() {
       if (!document.fullscreenElement) {
-        playerWrapper.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
-          // Fullscreen API may be denied or unavailable
-        });
+        playerWrapper.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
       } else {
         document.exitFullscreen().catch(() => {});
       }
@@ -323,14 +436,11 @@
     document.addEventListener('fullscreenchange', () => {
       if (document.fullscreenElement === playerWrapper) {
         fsToggle.classList.add('active');
-        fsToggle.textContent = '⛶';
         fsToggle.title = 'Exit fullscreen';
       } else {
         fsToggle.classList.remove('active');
-        fsToggle.textContent = '⛶';
         fsToggle.title = 'Fullscreen';
       }
-      // Let the danmaku canvas and other elements recalculate dimensions
       window.dispatchEvent(new Event('resize'));
     });
 
@@ -341,6 +451,7 @@
       if (hls) hls.destroy();
       if (ws) ws.close();
       if (danmaku) danmaku.destroy();
+      stopPwdValidation();
     });
   </script>
 </body>

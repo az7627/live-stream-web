@@ -5,11 +5,12 @@
 const API_BASE = ''; // same origin
 
 /** Wrapper around fetch that throws on non-2xx with the JSON error message. */
-async function api(path, options = {}) {
+async function api(path, { signal, ...opts } = {}) {
   const url = API_BASE + path;
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    ...opts,
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
