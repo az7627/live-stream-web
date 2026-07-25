@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Watch — Live Stream</title>
   <link rel="stylesheet" href="/static/css/style.css">
-  <!-- hls.js from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@0.14.17/dist/hls.min.js"></script>
+  <script src="/static/js/hls.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -197,7 +196,7 @@
 
       const hlsUrl = `/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
 
-      if (Hls.isSupported()) {
+      if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         hls = new Hls();
         hls.loadSource(hlsUrl);
         hls.attachMedia(video);
