@@ -200,7 +200,11 @@
       const hlsUrl = `${API_BASE}/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
 
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        hls = new Hls();
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 30,
+        });
         hls.loadSource(hlsUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -210,7 +214,12 @@
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (data.fatal) {
-            checkStreamEnded();
+            if (data.details === 'bufferAddCodecError' || data.details === 'manifestIncompatibleCodecsError') {
+              showOverlay('error');
+              errorText.textContent = '当前浏览器不支持该视频编码（如 HEVC/H.265），请使用支持 HEVC 硬解的浏览器（Edge / Chrome）或切换为 H.264 推流。';
+            } else {
+              checkStreamEnded();
+            }
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
