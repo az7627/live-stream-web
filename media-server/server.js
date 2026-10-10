@@ -73,32 +73,17 @@ function startHls(streamName) {
   const outDir = path.join(HLS_ROOT, 'live', streamName);
   fs.mkdirSync(outDir, { recursive: true });
 
-  // Clean old segments from previous runs
-  try {
-    const files = fs.readdirSync(outDir);
-    for (const file of files) {
-      if (file.endsWith('.ts') || file.endsWith('.m4s') || file.endsWith('.mp4') || file.endsWith('.m3u8')) {
-        try { fs.unlinkSync(path.join(outDir, file)); } catch {}
-      }
-    }
-  } catch {}
-
   const rtmpUrl = `rtmp://127.0.0.1:1935/live/${streamName}`;
   const indexM3u8 = path.join(outDir, 'index.m3u8');
-  const segPattern = path.join(outDir, '%d.m4s');
+  const segPattern = path.join(outDir, '%d.ts');
 
-  // fMP4 (fragmented MP4) supports both H.264 (AVC) and H.265 (HEVC) seamlessly in modern browsers
   const args = [
     '-i', rtmpUrl,
-    '-c:v', 'copy',
-    '-c:a', 'copy',
-    '-tag:v', 'hvc1',
+    '-c', 'copy',
     '-f', 'hls',
     '-hls_time', '2',
     '-hls_list_size', '6',
     '-hls_flags', 'delete_segments+append_list',
-    '-hls_segment_type', 'fmp4',
-    '-hls_fmp4_init_filename', 'init.mp4',
     '-hls_segment_filename', segPattern,
     indexM3u8,
   ];
