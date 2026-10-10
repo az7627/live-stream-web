@@ -2,7 +2,7 @@
  * Shared utilities used by all pages.
  */
 
-const API_BASE = ''; // same origin
+const API_BASE = window.location.pathname.startsWith('/live') ? '/live' : '';
 
 /** Wrapper around fetch that throws on non-2xx with the JSON error message. */
 async function api(path, { signal, ...opts } = {}) {

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Watch — Live Stream</title>
-  <link rel="stylesheet" href="/static/css/style.css">
-  <script src="/static/js/hls.min.js"></script>
+  <link rel="stylesheet" href="/live/static/css/style.css">
+  <script src="/live/static/js/hls.min.js"></script>
 </head>
 <body>
 <a href="https://github.com/az7627/live-stream-web" class="github-corner" target="_blank" title="View on GitHub" style="position:fixed;top:16px;right:16px;z-index:9999;color:#fff;opacity:0.7;transition:opacity 0.2s">
@@ -15,10 +15,10 @@
     <nav class="navbar">
       <div class="brand">
         <span class="dot live"></span>
-        <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
+        <a href="/live/" style="color:inherit;text-decoration:none;">Live Stream</a>
       </div>
-      <a href="/manage" class="btn btn-outline btn-sm">⚙ Manage</a>
-      <a href="/" class="btn btn-outline btn-sm">← Back</a>
+      <a href="/live/manage" class="btn btn-outline btn-sm">⚙ Manage</a>
+      <a href="/live/" class="btn btn-outline btn-sm">← Back</a>
     </nav>
 
     <!-- Title -->
@@ -84,12 +84,12 @@
     </p>
   </div>
 
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/danmaku.js"></script>
+  <script src="/live/static/js/app.js"></script>
+  <script src="/live/static/js/danmaku.js"></script>
   <script>
     /* ── Initialisation ────────────────────────────────────────────────── */
 
-    const streamName = window.location.pathname.replace('/watch/', '');
+    const streamName = window.location.pathname.split('/watch/').pop();
     let viewPassword = sessionStorage.getItem('view_pwd_' + streamName);
 
     const titleEl = document.getElementById('stream-title');
@@ -197,7 +197,7 @@
       isLive = true;
       showOverlay('waiting');
 
-      const hlsUrl = `/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
+      const hlsUrl = `${API_BASE}/hls/live/${encodeURIComponent(streamName)}/index.m3u8`;
 
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         hls = new Hls();
@@ -373,7 +373,7 @@
 
     function connectWebSocket() {
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsUrl = `${proto}://${window.location.host}/ws/${encodeURIComponent(streamName)}`;
+      const wsUrl = `${proto}://${window.location.host}${API_BASE}/ws/${encodeURIComponent(streamName)}`;
 
       ws = new WebSocket(wsUrl);
 

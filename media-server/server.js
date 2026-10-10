@@ -17,7 +17,9 @@ const DB_PATH = path.resolve(__dirname, '..', 'data', 'live_stream.db');
 const HLS_ROOT = path.resolve(__dirname, '..', 'media', 'hls');
 const FFMPEG =
   process.env.FFMPEG_PATH ||
-  'C:/Program Files/ffmpeg/bin/ffmpeg';
+  (process.platform === 'win32'
+    ? 'C:/Program Files/ffmpeg/bin/ffmpeg'
+    : 'ffmpeg');
 
 // ── Sync database ────────────────────────────────────────────────────────
 

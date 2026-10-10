@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Manage — Live Stream</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/live/static/css/style.css">
 </head>
 <body>
 <a href="https://github.com/az7627/live-stream-web" class="github-corner" target="_blank" title="View on GitHub" style="position:fixed;top:16px;right:16px;z-index:9999;color:#fff;opacity:0.7;transition:opacity 0.2s">
@@ -14,10 +14,10 @@
     <nav class="navbar">
       <div class="brand">
         <span class="dot live"></span>
-        <a href="/" style="color:inherit;text-decoration:none;">Live Stream</a>
+        <a href="/live/" style="color:inherit;text-decoration:none;">Live Stream</a>
       </div>
-      <a href="/go-live" class="btn btn-outline btn-sm">📡 Go Live</a>
-      <a href="/" class="btn btn-outline btn-sm">← Home</a>
+      <a href="/live/go-live" class="btn btn-outline btn-sm">📡 Go Live</a>
+      <a href="/live/" class="btn btn-outline btn-sm">← Home</a>
     </nav>
 
     <h2 class="mb-16">⚙ Admin Panel</h2>
@@ -46,7 +46,7 @@
 
       <!-- Actions bar -->
       <div class="mb-16" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <a href="/go-live" class="btn btn-outline">📡 Start New Stream</a>
+        <a href="/live/go-live" class="btn btn-outline">📡 Start New Stream</a>
         <button class="btn btn-outline" id="refresh-list-btn">🔄 Refresh</button>
         <button class="btn btn-outline" id="change-push-pwd-btn">🔐 Change Push Password</button>
       </div>
@@ -103,7 +103,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/live/static/js/app.js"></script>
   <script>
     /* ── State ──────────────────────────────────────────────────────────── */
 
@@ -225,7 +225,7 @@
           <div class="empty-state">
             <div class="icon">📺</div>
             <p>No streams yet.</p>
-            <p class="sub mt-8"><a href="/go-live">Start one</a> from the Go Live page.</p>
+            <p class="sub mt-8"><a href="/live/go-live">Start one</a> from the Go Live page.</p>
           </div>`;
         return;
       }
@@ -239,7 +239,7 @@
           ? new Date(s.created_at).toLocaleString()
           : '--';
         const canEnd = s.status !== 'ended';
-        const watchUrl = `/watch/${encodeURIComponent(s.name)}`;
+        const watchUrl = `/live/watch/${encodeURIComponent(s.name)}`;
 
         html += `
           <div class="stream-item" data-name="${esc(s.name)}">
