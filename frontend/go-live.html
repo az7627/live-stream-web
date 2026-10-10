@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go Live — Live Stream</title>
-  <link rel="stylesheet" href="/live/static/css/style.css">
+  <link rel="stylesheet" href="/live/static/css/style.css?v=1.2">
 </head>
 <body>
 <a href="https://github.com/az7627/live-stream-web" class="github-corner" target="_blank" title="View on GitHub" style="position:fixed;top:16px;right:16px;z-index:9999;color:#fff;opacity:0.7;transition:opacity 0.2s">
@@ -50,7 +50,7 @@
       </div>
 
       <!-- 提交 -->
-      <button class="btn btn-primary" id="create-btn" disabled style="width:100%;">发起直播</button>
+      <button class="btn btn-primary" id="create-btn" style="width:100%;">发起直播</button>
 
       <!-- 错误信息 -->
       <p id="form-error" style="color:var(--danger);font-size:0.85rem;margin-top:12px;display:none;"></p>
@@ -77,7 +77,7 @@
     </div>
   </div>
 
-  <script src="/live/static/js/app.js"></script>
+  <script src="/live/static/js/app.js?v=1.2"></script>
   <script>
     /* ── DOM refs ──────────────────────────────────────────────────────── */
     const nameInput  = document.getElementById('stream-name');
@@ -92,6 +92,7 @@
     const watchLink  = document.getElementById('watch-link');
 
     let nameValid = false;
+    let checkTimer = null;
 
     /* ── 流名称可用性检查 ────────────────────────────────────────────── */
 
@@ -102,8 +103,7 @@
         nameCheck.className = 'check-result err';
         nameCheck.textContent = '请输入流名称。';
         nameValid = false;
-        updateCreateBtn();
-        return;
+        return false;
       }
 
       nameCheck.className = 'check-result';
@@ -114,17 +114,19 @@
           nameCheck.className = 'check-result err';
           nameCheck.textContent = '✗ 名称已被占用，请换一个。';
           nameValid = false;
+          return false;
         } else {
           nameCheck.className = 'check-result ok';
           nameCheck.textContent = '✓ 名称可用！';
           nameValid = true;
+          return true;
         }
       } catch (err) {
         nameCheck.className = 'check-result err';
         nameCheck.textContent = '✗ ' + err.message;
         nameValid = false;
+        return false;
       }
-      updateCreateBtn();
     }
 
     checkBtn.addEventListener('click', checkName);
@@ -135,40 +137,44 @@
       nameValid = false;
       nameCheck.className = 'check-result';
       nameCheck.textContent = '';
-      updateCreateBtn();
+      clearTimeout(checkTimer);
+      const val = nameInput.value.trim();
+      if (val) {
+        checkTimer = setTimeout(() => {
+          checkName();
+        }, 500);
+      }
     });
 
-    /* ── 按钮状态 ─────────────────────────────────────────────────────── */
-
-    function updateCreateBtn() {
-      createBtn.disabled = !(
-        nameValid &&
-        pushPwd.value.trim().length >= 6 &&
-        viewPwd.value.trim().length >= 4
-      );
-    }
-
-    pushPwd.addEventListener('input', updateCreateBtn);
-    viewPwd.addEventListener('input', updateCreateBtn);
+    pushPwd.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createBtn.click();
+    });
+    viewPwd.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createBtn.click();
+    });
 
     /* ── 发起直播 ─────────────────────────────────────────────────────── */
 
     createBtn.addEventListener('click', async () => {
-      const name = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-      if (!nameValid) {
-        showFormError('请先检查流名称是否可用。');
+      let name = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      nameInput.value = name;
+      if (!name) {
+        showFormError('请输入流名称。');
+        nameInput.focus();
         return;
       }
 
       const pushPwdVal = pushPwd.value.trim();
       if (!pushPwdVal || pushPwdVal.length < 6) {
         showFormError('推流密码至少需要 6 个字符。');
+        pushPwd.focus();
         return;
       }
 
       const viewPwdVal = viewPwd.value.trim();
       if (!viewPwdVal || viewPwdVal.length < 4) {
         showFormError('访问密码至少需要 4 个字符。');
+        viewPwd.focus();
         return;
       }
 
@@ -177,6 +183,16 @@
       formError.style.display = 'none';
 
       try {
+        // 如果尚未检查流名称，先在线校验
+        if (!nameValid) {
+          const ok = await checkName();
+          if (!ok) {
+            createBtn.disabled = false;
+            createBtn.textContent = '发起直播';
+            return;
+          }
+        }
+
         // 先验证推流密码
         await apiPost('/api/validate_push_password', {
           stream_name: name,
@@ -191,7 +207,7 @@
 
         showObsInfo(name);
       } catch (err) {
-        showFormError(err.message);
+        showFormError(err.message || '创建直播失败');
         createBtn.disabled = false;
         createBtn.textContent = '发起直播';
       }
